@@ -1,45 +1,32 @@
 # virtfusion-live-migrate
 
-## Overview
-
-The script allows for two types of migration:
-
-1. **Single VM Migration:** Migrate a specific VM identified by its server ID to a specified destination hypervisor.
-   
-2. **Bulk VM Migration:** Migrate all VMs from a source hypervisor to a specified destination hypervisor.
-
 ## Prerequisites
 
-- **jq:** The script utilizes `jq` for JSON processing. Ensure it's installed and available in your `PATH`.
+- **jq:** The script utilizes `jq` for JSON processing.
 - **VirtFusion CLI:** The VirtFusion CLI tool `vfcli-ctrl` should be available. Please note Live Migration is only currently available on the VirtFusion TESTING branch.
 
-## Usage
+### Required Parameters
 
-### 1. Single VM Migration
+If migrating a single VM, or multiple specific VMs with or without concurrency: 
 
-Migrate a specific VM to a designated destination hypervisor.
+- `DST_ID SERVER_ID(s)`: This will set the destination hypervisor ID, and the IDs of the server(s) you are migrating.
 
-```sh
-./live.sh single_vm [DESTINATION_HYPERVISOR_ID] [SERVER_ID]
-```
+If draining a hypervisor, with or without concurrency.
 
-### 2. Bulk VM Migration
+- `SRC_ID DST_ID`: This will set the source hypervisor ID you are migrating from, to the destination hypervisor you are migrating to.
 
-Migrate all VMs from a source hypervisor to a designated destination hypervisor.
+### Options
+- `-c <number>`: Set concurrency. Determines how many VMs simultaneously migrate.
+- `-o`: Allows migration of offline VMs.
+- `-s <speed in Mbps>`: Set transfer speed limit in Mbps.
+- `--drain-hv`: Migrate all VMs from `SRC_ID`.
 
-```sh
-./live.sh all_vms [SOURCE_HYPERVISOR_ID] [DESTINATION_HYPERVISOR_ID]
-```
-
-## Parameters Explanation
-
-- **[OPERATION]:** Specifies the operational mode. It can be either `single_vm` for single VM migration or `all_vms` for bulk migration.
-
-- **[SOURCE_HYPERVISOR_ID]:** (Required for `all_vms` operation) The ID of the source hypervisor from which all VMs will be migrated.
-
-- **[DESTINATION_HYPERVISOR_ID]:** The ID of the destination hypervisor to which VM(s) will be migrated.
-
-- **[SERVER_ID]:** (Required for `single_vm` operation) The ID of the specific server (VM) that is intended to be migrated.
+### Examples
+- `./migrate.sh SRC_ID DST_ID --drain-hv -c 5 -o -s 80`: Migrate all VMs from `SRC_ID` to `DST_ID`, 5 at a time, using offline migration with a speed limit of 80Mbps.
+- `./migrate.sh DST_ID SERVER_ID`: Migrate a single VM (`SERVER_ID`) to `DST_ID` without any concurrency.
+- `./migrate.sh DST_ID SERVER_ID(s) -o`: Migrate specific VMs to `DST_ID`, and if a VM is offline at the time of running, it'll migrate offline.
+- `./migrate.sh DST_ID SERVER_ID(s) -s 40`: Migrate specific VMs to `DST_ID` at a limited speed of 40 Mbps.
+- `./migrate.sh DST_ID SERVER_ID(s) -c 5`: Migrate specific VMs to `DST_ID` with concurrency, meaning 5 VMs will migrate simultaneously.
 
 ## Handling Migration Failures
 
@@ -47,10 +34,6 @@ In the event of a migration failure, the script will:
 - Display an error message indicating which VM (by ID) encountered an issue and present the error message.
 - Attempt to cancel the ongoing migration after a 3-second delay.
 - Terminate further execution, preventing additional migrations from initiating.
-
-## Contributing
-
-Contributions to improve the script are welcomed. Kindly ensure to test your modifications in a non-production environment before submitting a Pull Request.
 
 ## Disclaimer
 
