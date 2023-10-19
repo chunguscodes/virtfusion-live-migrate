@@ -28,6 +28,8 @@ If draining a hypervisor, with or without concurrency.
 - `./migrate.sh DST_ID SERVER_ID(s) -s 40`: Migrate specific VMs to `DST_ID` at a limited speed of 40 Mbps per VM migrated.
 - `./migrate.sh DST_ID SERVER_ID(s) -c 5`: Migrate specific VMs to `DST_ID` with concurrency, meaning 5 VMs will migrate simultaneously.
 
+#### SERVER_ID(s) would be formatted like this: ./migrate.sh DST_ID VMID1 VMID2 VMID3.
+
 ### Handling Migration Failures
 
 In the event of a migration failure, the script will:
