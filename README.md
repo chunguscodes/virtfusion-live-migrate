@@ -2,8 +2,8 @@
 
 ### Prerequisites
 
-- **jq:** The script utilizes `jq` for JSON processing.
-- **VirtFusion CLI:** The VirtFusion CLI tool `vfcli-ctrl` should be available. Please note Live Migration is only currently available on the VirtFusion TESTING branch.
+- **Python 3:** The script utilizes `python3`. If script is run on VirtFusion master, this is already available and will work out of the box.
+- **VirtFusion CLI:** The VirtFusion CLI tool `vfcli-ctrl` should be available.
 
 ### Required Parameters
 
@@ -22,20 +22,20 @@ If draining a hypervisor, with or without concurrency.
 - `--drain-hv`: Migrate all VMs from `SRC_ID`.
 
 ### Examples
-- `./migrate.sh SRC_ID DST_ID --drain-hv -c 5 -o -s 80`: Migrate all VMs from `SRC_ID` to `DST_ID`, 5 at a time, using offline migration with a speed limit of 80Mbps.
-- `./migrate.sh DST_ID SERVER_ID`: Migrate a single VM (`SERVER_ID`) to `DST_ID` without any concurrency.
-- `./migrate.sh DST_ID SERVER_ID(s) -o`: Migrate specific VMs to `DST_ID`, and if a VM is offline at the time of running, it'll migrate offline.
-- `./migrate.sh DST_ID SERVER_ID(s) -s 40`: Migrate specific VMs to `DST_ID` at a limited speed of 40 Mbps per VM migrated.
-- `./migrate.sh DST_ID SERVER_ID(s) -c 5`: Migrate specific VMs to `DST_ID` with concurrency, meaning 5 VMs will migrate simultaneously.
+- `python3 vf-migrate.py -c 5 -o -s 80 --drain-hv SRC_ID DST_ID` : Migrate all VMs from SRC_ID to DST_ID, 5 at a time, using offline migration with a speed limit of 80Mbps.
+- `python3 vf-migrate.py DST_ID SERVER_ID` : Migrate a single VM (`SERVER_ID`) to `DST_ID` without any concurrency.
+- `python3 vf-migrate.py -o DST_ID SERVER_ID(s)` : Migrate specific VMs to `DST_ID`, and if a VM is offline at the time of running, it'll migrate offline.
+- `python3 vf-migrate.py -s 40 DST_ID SERVER_ID(s)` : Migrate specific VMs to `DST_ID` at a limited speed of 40 Mbps.
+- `python3 vf-migrate.py -c 5 DST_ID SERVER_ID(s)` : Migrate specific VMs to `DST_ID` with concurrency, meaning 5 VMs will migrate simultaneously.
 
-#### SERVER_ID(s) would be formatted like this: ./migrate.sh DST_ID VMID1 VMID2 VMID3.
+#### SERVER_ID(s) would be formatted like this: python3 vf-migrate.py DST_ID VMID1 VMID2 VMID3.
 
 ### Handling Migration Failures
 
 In the event of a migration failure, the script will:
 - Display an error message indicating which VM (by ID) encountered an issue and present the error message.
-- Attempt to cancel the ongoing migration after a 3-second delay.
-- Terminate further execution, preventing additional migrations from initiating.
+- If the migration can be cancelled, it will offer a Y or N option to either proceed or cancel the migration in question.
+- If the migration cannot be cancelled, it will report the error and proceed with the next migration.
 
 ### Disclaimer
 
