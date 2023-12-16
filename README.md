@@ -3,7 +3,7 @@
 ### Prerequisites
 
 - **jq:** The script utilizes `jq` for JSON processing.
-- **VirtFusion CLI:** The VirtFusion CLI tool `vfcli-ctrl` should be available. Please note Live Migration is only currently available on the VirtFusion TESTING branch.
+- **VirtFusion CLI:** The VirtFusion CLI tool `vfcli-ctrl` should be available. Please note this script should only be run on a VirtFusion master server.
 
 ### Required Parameters
 
