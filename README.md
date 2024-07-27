@@ -37,6 +37,10 @@ In the event of a migration failure, the script will:
 - Attempt to cancel the ongoing migration after a 3-second delay.
 - Terminate further execution, preventing additional migrations from initiating.
 
+### SIGINT Trap
+
+If you wish to cancel any further migrations past what is currently running, you can use CTRL+C which will stop the script from running any new migrations when the existing one has concluded.
+
 ### Disclaimer
 
 Please ensure to test the script in a non-production environment. I am not responsible for any potential data loss or disruptions caused directly or indirectly by the usage of the script.
