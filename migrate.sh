@@ -1,35 +1,15 @@
 #!/bin/bash
 
-if ! command -v jq &>/dev/null; then
-    echo "Error: jq is not installed. Please install it before running this script."
-    exit 1
-fi
+check_dependencies() {
+    for cmd in jq vfcli-ctrl; do
+        if ! command -v $cmd &>/dev/null; then
+            echo "$(tput setaf 1)Error: $cmd is not installed. Please install it before running this script.$(tput sgr0)"
+            exit 1
+        fi
+    done
+}
 
-if ! command -v vfcli-ctrl &>/dev/null; then
-    echo "Error: vfcli-ctrl is not installed. Please install it before running this script."
-    exit 1
-fi
-
-CONCURRENCY=1
-OFFLINE=""
-SPEED=""
-DRAIN_HV=false
-POSITIONAL=()
-
-while [[ $# -gt 0 ]]; do
-    key="$1"
-    case $key in
-        -c) CONCURRENCY="$2"; shift; shift ;;
-        -o) OFFLINE="--force-offline"; shift ;;
-        -s) SPEED_VALUE_MiBs=$(( $2 / 8 )); SPEED="--xfer-speed=$SPEED_VALUE_MiBs"; shift; shift ;;
-        --drain-hv) DRAIN_HV=true; shift ;;
-        *) POSITIONAL+=("$1"); shift ;;
-    esac
-done
-
-set -- "${POSITIONAL[@]}"
-
-if [[ ${#POSITIONAL[@]} -lt 2 ]]; then
+display_help() {
     cat <<EOL
     $(tput bold)$(tput setaf 6)Script Usage:$(tput sgr0)
     --------------
@@ -51,68 +31,85 @@ if [[ ${#POSITIONAL[@]} -lt 2 ]]; then
       $0 DST_ID SERVER_ID(s) -c 5 : Migrate specific VMs to DST_ID with concurrency, meaning 5 VMs will migrate simultaneously.
 
 EOL
-    exit 1
-fi
+}
 
-function migrate_server {
-    SERVER_ID=$1
-    DST_HV_ID=$2
-    MIGRATION_RESPONSE=$(vfcli-ctrl server:migrate-live start --server=$SERVER_ID --dst=$DST_HV_ID $OFFLINE $SPEED --json)
-    SUCCESS=$(echo "$MIGRATION_RESPONSE" | jq -r '.success')
-    ERRORS=$(echo "$MIGRATION_RESPONSE" | jq -r '.errors[]?')
+CONCURRENCY=1; OFFLINE=""; SPEED=""; DRAIN_HV=false; POSITIONAL=(); STOP=false; SUCCESS_COUNT=0; FAIL_COUNT=0; FAILED_SERVERS=()
 
-    if [[ "$SUCCESS" == "true" ]]; then
-        echo "Migration of server $SERVER_ID was successful!"
-    else
-        echo "Migration failed for server $SERVER_ID."
-        echo "Error: $ERRORS"
+check_dependencies
+
+while [[ $# -gt 0 ]]; do
+    key="$1"
+    case $key in
+        -c) CONCURRENCY="$2"; shift; shift ;;
+        -o) OFFLINE="--force-offline"; shift ;;
+        -s) SPEED_VALUE_MiBs=$(( $2 / 8 )); SPEED="--xfer-speed=$SPEED_VALUE_MiBs"; shift; shift ;;
+        --drain-hv) DRAIN_HV=true; shift ;;
+        *) POSITIONAL+=("$1"); shift ;;
+    esac
+done
+
+set -- "${POSITIONAL[@]}"
+[[ ${#POSITIONAL[@]} -lt 2 ]] && { display_help; exit 1; }
+
+trap 'STOP=true' SIGINT
+
+migrate_server() {
+    local SERVER_ID=$1 DST_HV_ID=$2
+    local MIGRATION_RESPONSE=$(vfcli-ctrl server:migrate-live start --server=$SERVER_ID --dst=$DST_HV_ID $OFFLINE $SPEED --json)
+    local SUCCESS=$(echo "$MIGRATION_RESPONSE" | jq -r '.success')
+    local ERRORS=$(echo "$MIGRATION_RESPONSE" | jq -r '.errors[]?')
+
+    [[ "$SUCCESS" == "true" ]] && { echo "Migration of server $SERVER_ID was successful!"; return 0; } || {
+        echo "Migration failed for server $SERVER_ID. Error: $ERRORS"
         sleep 3
         vfcli-ctrl server:migrate-live cancel --server=$SERVER_ID
-        exit 1
-    fi
+        return 1
+    }
 }
 
 if $DRAIN_HV; then
     SRC_HV_ID=$1
     DST_HV_ID=$2
-    SERVER_LIST_JSON=$(vfcli-ctrl server:migrate-live servers --src=$SRC_HV_ID --json)
+    read -p "Are you sure you want to migrate all VMs from hypervisor $SRC_HV_ID to $DST_HV_ID? (yes/no): " confirmation
+    [[ "$confirmation" != "yes" ]] && { echo "Migration cancelled by user."; exit 0; }
 
-    if [[ -z "$SERVER_LIST_JSON" ]]; then
-        echo "Failed to retrieve the server list."
-        exit 1
-    fi
+    SERVER_LIST_JSON=$(vfcli-ctrl server:migrate-live servers --src=$SRC_HV_ID --json)
+    [[ -z "$SERVER_LIST_JSON" ]] && { echo "Failed to retrieve the server list."; exit 1; }
 
     SERVER_IDS=$(echo "$SERVER_LIST_JSON" | jq -r '.servers[].id')
     TOTAL_SERVERS=$(echo "$SERVER_IDS" | wc -w)
     MIGRATED_COUNT=0
 
     for SERVER_ID in $SERVER_IDS; do
+        $STOP && { echo "Stopping further migrations after ongoing migration is complete!"; break; }
         MIGRATED_COUNT=$((MIGRATED_COUNT + 1))
         echo "Migrating server with ID: $SERVER_ID ($MIGRATED_COUNT/$TOTAL_SERVERS)"
-
         migrate_server $SERVER_ID $DST_HV_ID &
-
-        if (( MIGRATED_COUNT % CONCURRENCY == 0 )); then
-            wait
-        fi
+        [[ $? -eq 0 ]] && SUCCESS_COUNT=$((SUCCESS_COUNT + 1)) || { FAIL_COUNT=$((FAIL_COUNT + 1)); FAILED_SERVERS+=("$SERVER_ID"); }
+        (( MIGRATED_COUNT % CONCURRENCY == 0 )) && wait
     done
-
     wait
 else
     DST_HV_ID=$1
     SERVER_IDS=("${@:2}")
     TOTAL_SERVERS=${#SERVER_IDS[@]}
     MIGRATED_COUNT=0
+
     for SERVER_ID in "${SERVER_IDS[@]}"; do
+        $STOP && { echo "Stopping further migrations as requested."; break; }
         MIGRATED_COUNT=$((MIGRATED_COUNT + 1))
         echo "Migrating server with ID: $SERVER_ID ($MIGRATED_COUNT/$TOTAL_SERVERS)"
-
         migrate_server $SERVER_ID $DST_HV_ID &
-
-        if (( MIGRATED_COUNT % CONCURRENCY == 0 )) || (( MIGRATED_COUNT == TOTAL_SERVERS )); then
-            wait
-        fi
+        [[ $? -eq 0 ]] && SUCCESS_COUNT=$((SUCCESS_COUNT + 1)) || { FAIL_COUNT=$((FAIL_COUNT + 1)); FAILED_SERVERS+=("$SERVER_ID"); }
+        (( MIGRATED_COUNT % CONCURRENCY == 0 )) || (( MIGRATED_COUNT == TOTAL_SERVERS )) && wait
     done
-
     wait
 fi
+
+echo "Migration Summary:"
+echo "-----------------"
+echo "Total servers attempted: $TOTAL_SERVERS"
+echo "Successfully migrated: $SUCCESS_COUNT"
+echo "Failed migrations: $FAIL_COUNT"
+(( FAIL_COUNT > 0 )) && { echo "Failed server IDs:"; for SERVER_ID in "${FAILED_SERVERS[@]}"; do echo "  - $SERVER_ID"; done; }
+echo "Migration completed!"
